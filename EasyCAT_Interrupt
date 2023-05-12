@@ -1,0 +1,151 @@
+//********************************************************************************************
+//                                                                                           *
+// AB&T Tecnologie Informatiche - Ivrea Italy                                                *
+// http://www.bausano.net                                                                    *
+// https://www.ethercat.org/en/products/791FFAA126AD43859920EA64384AD4FD.htm                 *
+//                                                                                           *  
+//********************************************************************************************    
+//                                                                                           *
+// This software is distributed as an example, in the hope that it could be useful,          *
+// WITHOUT ANY WARRANTY, even the implied warranty of FITNESS FOR A PARTICULAR PURPOSE       *
+//                                                                                           *
+//******************************************************************************************** 
+
+
+//----- EasyCAT HAT application basic example for Raspberry ----------------------------------
+//----- Derived from the example project TestEasyCAT.ino for the AB&T EasyCAT Arduino shield
+
+#include <stdio.h>
+#include <stddef.h>
+#include <unistd.h>
+#include <iostream>		// Include all needed libraries here
+#include <pigpio.h>
+#include <time.h>
+#include <pthread.h>
+//#include "HIL_PI.h"
+//#include "rtwtypes.h"
+
+int interrupt = 0;
+
+#include "EasyCAT.h"									 // EasyCAT library to interface     
+
+
+
+EasyCAT EASYCAT(SM_SYNC);                    // EasyCAT istantiation
+//static Q_car_for_code_generationModelClass SIM;
+int count;
+long int totale=0;
+long int errore=0;
+
+double tempo;
+double tempo1;
+
+float t = 0;
+float MAX = 0;
+unsigned long APPOGGIO;
+
+clock_t start,end;
+clock_t start1,end1;
+clock_t start2,end2;
+
+typedef union												
+{
+	uint8_t  Byte[4];
+	float inverted;
+	
+} inversion;
+
+void switchInterrupt(int gpio, int level, uint32_t tick); //fucntion prototype
+
+unsigned char status = 0;
+inversion inv;
+float f;
+unsigned long int l;
+
+
+
+int main()
+{	
+
+	 //---- initialize the EasyCAT board -----
+
+     if (EASYCAT.Init() == true)						 // initialization
+     {
+    	printf("inizialized\n");							 // succesfully completed
+     }
+     else											 	 // initialization failed   
+     {							
+       printf("inizialization failed\n");				 // the EasyCAT board was not recognized
+	   return -1;
+     }		
+
+
+
+	if (gpioInitialise() < 0)
+	{
+   		printf("PIGPIO initialization Failed");
+	}
+	else
+	{
+		gpioSetMode(17, PI_INPUT); 
+		gpioSetPullUpDown(17, PI_PUD_UP); 
+		gpioSetISRFunc(17,FALLING_EDGE,100,NULL) ;
+	}
+	
+	APPOGGIO = EASYCAT.SPIReadRegisterIndirect (WDOG_STATUS, 1);
+	APPOGGIO = EASYCAT.SPIReadRegisterIndirect (AL_STATUS, 1);
+	EASYCAT.SPIWriteProcRamFifo();
+	EASYCAT.SPIReadProcRamFifo();
+	end = clock();
+	while (1)
+	{  
+		EASYCAT.MainTask();
+		
+		printf("%d\n",EASYCAT.BufferOut.Byte[0]);
+		status = EASYCAT.MainTask();
+		printf("Status = %d \n",status);
+		inv.Byte[0]=EASYCAT.BufferOut.Byte[0];
+		inv.Byte[1]=EASYCAT.BufferOut.Byte[1];
+		inv.Byte[2]=EASYCAT.BufferOut.Byte[2];
+		inv.Byte[3]=EASYCAT.BufferOut.Byte[3];
+		f = *( (float*)(inv.Byte) );
+		printf("Load %f\n",f);
+
+		inv.Byte[0]=EASYCAT.BufferOut.Byte[6];
+		inv.Byte[1]=EASYCAT.BufferOut.Byte[7];
+		inv.Byte[2]=EASYCAT.BufferOut.Byte[8];
+		inv.Byte[3]=EASYCAT.BufferOut.Byte[9];
+		f = *( (float*)(inv.Byte) );
+		printf("Position %f\n",f);
+
+		inv.Byte[0]=EASYCAT.BufferOut.Byte[10];
+		inv.Byte[1]=EASYCAT.BufferOut.Byte[11];
+		inv.Byte[2]=EASYCAT.BufferOut.Byte[12];
+		inv.Byte[3]=EASYCAT.BufferOut.Byte[13];
+		f = *( (float*)(inv.Byte) );
+		printf("Speed %f\n\n",f);
+		usleep(20);				
+	}
+	
+}
+
+
+// interrupt function
+void switchInterrupt(int gpio, int level, uint32_t tick)
+{
+	if(gpio == 17)
+		{
+			count++;
+			if(count==1)
+			{
+				//status = EASYCAT.MainTask();
+				interrupt=1;
+				start1= tick;
+				tempo=((double)(start1-end1))/CLOCKS_PER_SEC;
+				printf("Freq =%f Hz     ",1/tempo);
+				EASYCAT.BufferOut.Byte[2] = 1;
+				end1=start1;
+				count=0;
+			}
+		}
+}
